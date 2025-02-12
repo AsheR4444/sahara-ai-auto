@@ -380,3 +380,13 @@ export type AccountInfoResponse = {
     addressInfo: AccountInfo
   }
 }
+
+export type CheckTwitterAccountResponseTypes = {
+  data: {
+    checkTwitterAccount: {
+      address: string
+      twitterUserID: string
+      twitterUserName: string
+    }
+  }
+}

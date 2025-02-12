@@ -4,7 +4,7 @@ import UserAgent from "user-agents"
 import uuid4 from "uuid4"
 
 import { Client } from "@/eth-async"
-import { AccountInfoResponse, CampaignResponse, CampaignType, CreateNewAccountResponse, Cred, IsAccountExistResponse, IsUsernameExistResponse, SignInResponse } from "@/galxe/types"
+import { AccountInfoResponse, CampaignResponse, CampaignType, CheckTwitterAccountResponseTypes, CreateNewAccountResponse, Cred, IsAccountExistResponse, IsUsernameExistResponse, SignInResponse } from "@/galxe/types"
 import { GlobalClient } from "@/GlobalClient"
 import { getProxyConfigAxios, getRandomNumber, logger, randomStringForEntropy } from "@/helpers"
 
@@ -170,7 +170,58 @@ Expiration Time: ${expDate}`
     } catch (error) {
       return false
     }
+  }
 
+  private async checkTwitterAccount(tweetURL: string) {
+    const payload = {
+      "operationName": "checkTwitterAccount",
+      "variables": {
+        "input": {
+          "address": `EVM:${this.evmClient.signer.address}`,
+          "tweetURL": tweetURL,
+        },
+      },
+      "query": "mutation checkTwitterAccount($input: VerifyTwitterAccountInput!) {\n  checkTwitterAccount(input: $input) {\n    address\n    twitterUserID\n    twitterUserName\n    __typename\n  }\n}",
+    }
+
+    const response = await this.request<CheckTwitterAccountResponseTypes>(payload)
+  }
+
+  async deleteSocialAccount(social: "TWITTER") {
+    if (!this.token) await this.login()
+
+    const infoOld = await this.getAccountInfo()
+
+    switch (social) {
+    case "TWITTER":
+      if (!infoOld.data.addressInfo.hasTwitter) {
+        logger.info(`Account ${this.client.name} | Galxe account has no ${social} account. No need to delete`)
+        return true
+      }
+    }
+
+    const payload = {
+      "operationName": "DeleteSocialAccount",
+      "variables": {
+        "input": {
+          "address": `EVM:${this.evmClient.signer.address}`,
+          "type": social,
+        },
+      },
+      "query": "mutation DeleteSocialAccount($input: DeleteSocialAccountInput!) {\n  deleteSocialAccount(input: $input) {\n    code\n    message\n    __typename\n  }\n}",
+    }
+
+    await this.request(payload)
+
+    const infoNew = await this.getAccountInfo()
+
+    switch (social) {
+    case "TWITTER":
+      if (!infoNew.data.addressInfo.hasTwitter) {
+        logger.success(`Account ${this.client.name} | Twitter account deleted successfully`)
+        return true
+      }
+    }
   }
 
   async login() {

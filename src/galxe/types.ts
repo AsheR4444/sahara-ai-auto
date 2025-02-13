@@ -387,6 +387,75 @@ export type CheckTwitterAccountResponseTypes = {
       address: string
       twitterUserID: string
       twitterUserName: string
+    } | null
+  }
+  errors: [
+    {
+        message: string,
+        path: string[],
+        extensions: {
+            args: null,
+            code: string,
+            domain: string,
+            error: string,
+            reason: string
+        }
     }
+  ]
+}
+
+export type VerifyTwitterAccountResponse = {
+  data: {
+    verifyTwitterAccount: {
+      address: string
+      twitterUserID: string
+      twitterUserName: string
+    } | null
+  }
+  errors: [
+    {
+        message: string,
+        path: string[],
+        extensions: {
+            args: null,
+            code: string,
+            domain: string,
+            error: string,
+            reason: string
+        }
+    }
+  ]
+}
+
+export type GetSocialAuthUrlResponse = {
+  data: {
+    getSocialAuthUrl: string
+  }
+  errors?: GalxeError[]
+}
+
+export type CheckDiscordAccountResponse = {
+  data: {
+    checkDiscordAccount: string | null
+  }
+  errors?: GalxeError[]
+}
+
+export type VerifyDiscordAccountResponse = {
+  data: {
+    verifyDiscordAccount: string | null
+  }
+  errors?: GalxeError[]
+}
+
+type GalxeError =   {
+  message: string,
+  path: string[],
+  extensions: {
+      args: null,
+      code: string,
+      domain: string,
+      error: string,
+      reason: string
   }
 }

@@ -75,3 +75,12 @@ export const createCsvTemplate = () => {
   // console.log()
   // console.log("----------")
 }
+
+export const getQueryParam = (url: string, name: string): string | null => {
+  try {
+    const urlObj = new URL(url)
+    return urlObj.searchParams.get(name)
+  } catch {
+    return null
+  }
+}

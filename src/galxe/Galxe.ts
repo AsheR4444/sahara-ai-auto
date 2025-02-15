@@ -5,19 +5,26 @@ import uuid4 from "uuid4"
 
 import { Client } from "@/eth-async"
 import { AccountInfo, AccountInfoResponse, CampaignResponse, CampaignType, CheckDiscordAccountResponse, CheckTwitterAccountResponseTypes, CreateNewAccountResponse, Cred, GetSocialAuthUrlResponse, IsAccountExistResponse, IsUsernameExistResponse, SignInResponse, VerifyDiscordAccountResponse, VerifyTwitterAccountResponse } from "@/galxe/types"
-import { GlobalClient } from "@/GlobalClient"
-import { getProxyConfigAxios, getQueryParam, getRandomNumber, logger, randomStringForEntropy, sleep } from "@/helpers"
+import { getQueryParam, getRandomNumber, logger, randomStringForEntropy, sleep } from "@/helpers"
 import { Twitter } from "@/twitter"
 
 import { hCapthcaBadReport, solverGeeTestCaptcha } from "./captcha"
 
 import "dotenv/config"
 
+type GalxeConfig = {
+  name: string
+  evmClient: Client
+  proxy: AxiosProxyConfig | null
+  discordToken: string | null
+  twitterAuthToken: string | null
+}
+
 class Galxe {
   private GALXE_DISCORD_CLIENT_ID = "947863296789323776"
   private DISCORD_AUTH_URL = "https://discord.com/api/v9/oauth2/authorize"
 
-  client: GlobalClient
+  name: string
   evmClient: Client
   headers: Required<AxiosRequestConfig>["headers"]
   token: string | null
@@ -26,18 +33,20 @@ class Galxe {
   profile: AccountInfo | null
   session: AxiosInstance
   discordToken: string | null
+  twitterAuthToken: string | null
 
-  constructor(client: GlobalClient) {
+  constructor({ name, evmClient, proxy, discordToken, twitterAuthToken }: GalxeConfig) {
+    this.name = name
     this.profile = null
     this.token = null
-    this.evmClient = client.evmClient
-    this.proxy = client.proxy ? getProxyConfigAxios(client.proxy) : null
+    this.evmClient = evmClient
+    this.proxy = proxy
     this.userAgent = new UserAgent({
       deviceCategory: "desktop",
     }).toString()
-    this.discordToken = client.discordToken
+    this.discordToken = discordToken
+    this.twitterAuthToken = twitterAuthToken
 
-    this.client = client
     this.headers = {
       "origin": "https://galxe.com",
       "sec-fetch-site": "cross-site",
@@ -143,15 +152,15 @@ Expiration Time: ${expDate}`
   private async createAccount() {
     let username = this.fakeUsername()
     let isUsernameExist = await this.isUsernameExist(username)
-    logger.info(`Account ${this.client.name} | Checking if username ${username} exist: ${isUsernameExist}`)
+    logger.info(`Account ${this.name} | Checking if username ${username} exist: ${isUsernameExist}`)
 
     while (isUsernameExist) {
       username += getRandomNumber(0, 9, true)
       isUsernameExist = await this.isUsernameExist(username)
-      logger.info(`Account ${this.client.name} | Checking if username ${username} exist: ${isUsernameExist}`)
+      logger.info(`Account ${this.name} | Checking if username ${username} exist: ${isUsernameExist}`)
     }
 
-    logger.info(`Account ${this.client.name} | Start creating account with name: ${username}`)
+    logger.info(`Account ${this.name} | Start creating account with name: ${username}`)
     const response = await this.request<CreateNewAccountResponse>({
       operationName: "CreateNewAccount",
       variables: {
@@ -168,7 +177,7 @@ Expiration Time: ${expDate}`
   }
 
   private async signIn() {
-    logger.info(`Account ${this.client.name} | Signing in to Galxe`)
+    logger.info(`Account ${this.name} | Signing in to Galxe`)
     const message = this.getMessage()
     const signature = await this.evmClient.signer.signMessage(message)
 
@@ -187,7 +196,7 @@ Expiration Time: ${expDate}`
       })
 
       if (resp.errors) {
-        logger.error(`Account ${this.client.name} | ${resp.errors}`)
+        logger.error(`Account ${this.name} | ${resp.errors}`)
         return false
       }
 
@@ -239,7 +248,7 @@ Expiration Time: ${expDate}`
     if (!this.token) await this.login()
 
     if (this.profile!.hasDiscord) {
-      logger.info(`Account ${this.client.name} | Discord account already linked. Current account: ${this.profile!.discordUserName}`)
+      logger.info(`Account ${this.name} | Discord account already linked. Current account: ${this.profile!.discordUserName}`)
       return
     }
     const authLink = await this.getSocialAuthUrl("DISCORD")
@@ -281,7 +290,7 @@ Expiration Time: ${expDate}`
 
       await this.refreshAccountInfo()
 
-      logger.success(`Account ${this.client.name} | Discord account linked successfully. Current account: ${this.profile!.discordUserName}`)
+      logger.success(`Account ${this.name} | Discord account linked successfully. Current account: ${this.profile!.discordUserName}`)
     } catch (error) {
       throw new Error("Failed to link discord: " + error)
     }
@@ -351,7 +360,7 @@ Expiration Time: ${expDate}`
   async linkTwitter() {
     if (!this.token) await this.login()
 
-    const twitter = new Twitter({ proxy: this.proxy, authToken: "", ct0: "" })
+    const twitter = new Twitter({ proxy: this.proxy, authToken: this.twitterAuthToken!, ct0: "" })
 
     await twitter.start()
     const tweetUrl = await twitter.tweet(`Verifying my Twitter account for my #GalxeID gid:${this.profile?.id} @Galxe\n\n`)
@@ -362,10 +371,10 @@ Expiration Time: ${expDate}`
       await sleep(1)
       await this.refreshAccountInfo()
 
-      logger.success(`Account ${this.client.name} | Twitter account linked. Current account: ${this.profile!.twitterUserName}`)
+      logger.success(`Account ${this.name} | Twitter account linked. Current account: ${this.profile!.twitterUserName}`)
 
     } catch (error) {
-      logger.error(`Account ${this.client.name} | Failed ot link Twitter: ${error}`)
+      logger.error(`Account ${this.name} | Failed ot link Twitter: ${error}`)
     }
   }
 
@@ -375,13 +384,13 @@ Expiration Time: ${expDate}`
     switch (social) {
     case "TWITTER":
       if (!this.profile!.hasTwitter) {
-        logger.info(`Account ${this.client.name} | Galxe account has no ${social} account. No need to delete`)
+        logger.info(`Account ${this.name} | Galxe account has no ${social} account. No need to delete`)
         return true
       }
       break
     case "DISCORD":
       if (!this.profile!.hasDiscord) {
-        logger.info(`Account ${this.client.name} | Galxe account has no ${social} account. No need to delete`)
+        logger.info(`Account ${this.name} | Galxe account has no ${social} account. No need to delete`)
         return true
       }
       break
@@ -405,13 +414,13 @@ Expiration Time: ${expDate}`
     switch (social) {
     case "TWITTER":
       if (!this.profile!.hasTwitter) {
-        logger.success(`Account ${this.client.name} | Twitter account deleted successfully`)
+        logger.success(`Account ${this.name} | Twitter account deleted successfully`)
         return true
       }
       break
     case "DISCORD":
       if (!this.profile!.hasDiscord) {
-        logger.success(`Account ${this.client.name} | Discord account deleted successfully`)
+        logger.success(`Account ${this.name} | Discord account deleted successfully`)
         return true
       }
       break
@@ -516,10 +525,10 @@ Expiration Time: ${expDate}`
   async handleVisitPageTask({ taskId, campaignId }: { taskId: string; campaignId: string }) {
     if (!this.token) await this.login()
 
-    logger.info(`Account ${this.client.name} | Start task ${taskId}`)
+    logger.info(`Account ${this.name} | Start task ${taskId}`)
 
     while (true) {
-      const solution = await solverGeeTestCaptcha({ accountName: this.client.name, ua: this.userAgent, proxy: this.proxy })
+      const solution = await solverGeeTestCaptcha({ accountName: this.name, ua: this.userAgent, proxy: this.proxy })
 
       if (!solution) continue
 
@@ -554,15 +563,15 @@ Expiration Time: ${expDate}`
 
         if (response.errors?.length) {
           console.log(response.errors)
-          await hCapthcaBadReport({ id: solution.id, accountName: this.client.name })
-          logger.error(`Account ${this.client.name} | Captcha verification failed, retrying...`)
+          await hCapthcaBadReport({ id: solution.id, accountName: this.name })
+          logger.error(`Account ${this.name} | Captcha verification failed, retrying...`)
           continue
         }
 
-        logger.success(`Account ${this.client.name} | Successfully completed task ${taskId}`)
+        logger.success(`Account ${this.name} | Successfully completed task ${taskId}`)
         return true
       } catch (error) {
-        logger.error(`Account ${this.client.name} | Error while task ${taskId}\n ${error}`)
+        logger.error(`Account ${this.name} | Error while task ${taskId}\n ${error}`)
         return false
       }
     }
@@ -572,7 +581,7 @@ Expiration Time: ${expDate}`
   async claimTask(taskId: string) {
     if (!this.token) await this.login()
 
-    logger.info(`Account ${this.client.name} | Start claim task ${taskId}`)
+    logger.info(`Account ${this.name} | Start claim task ${taskId}`)
 
     try {
       await this.request({
@@ -589,10 +598,10 @@ Expiration Time: ${expDate}`
           "mutation SyncCredentialValue($input: SyncCredentialValueInput!) {\n  syncCredentialValue(input: $input) {\n    value {\n      address\n      spaceUsers {\n        follow\n        points\n        participations\n        __typename\n      }\n      campaignReferral {\n        count\n        __typename\n      }\n      galxePassport {\n        eligible\n        lastSelfieTimestamp\n        __typename\n      }\n      gitcoinPassport {\n        score\n        lastScoreTimestamp\n        __typename\n      }\n      walletBalance {\n        balance\n        __typename\n      }\n      multiDimension {\n        value\n        __typename\n      }\n      allow\n      survey {\n        answers\n        __typename\n      }\n      quiz {\n        allow\n        correct\n        __typename\n      }\n      __typename\n    }\n    message\n    __typename\n  }\n}",
       })
 
-      logger.success(`Account ${this.client.name} | Succsesfully claimed task ${taskId}`)
+      logger.success(`Account ${this.name} | Succesfully claimed task ${taskId}`)
     }
     catch (error) {
-      logger.error(`Account ${this.client.name} | Error while claim task ${taskId}\n ${error}`)
+      logger.error(`Account ${this.name} | Error while claim task ${taskId}\n ${error}`)
     }
   }
 }

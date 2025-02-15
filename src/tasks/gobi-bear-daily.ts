@@ -33,10 +33,9 @@ const handleGalxeGobiBearDaily = async () => {
       continue
     }
 
-    const client = new GlobalClient(wallet.name, new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), wallet.refCode || "", wallet.proxy)
+    const client = new GlobalClient({ name: wallet.name, evmClient: new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), ref: wallet.refCode || "", proxy: wallet.proxy })
 
     promises.push(galxeGobiBearDaily(client))
-
   }
 
   await Promise.all(promises)
@@ -65,10 +64,9 @@ const handleGobiBearDaily = async () => {
       continue
     }
 
-    const client = new GlobalClient(wallet.name, new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), wallet.refCode, wallet.proxy)
+    const client = new GlobalClient({ name: wallet.name, evmClient: new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), ref: wallet.refCode || "", proxy: wallet.proxy })
 
     promises.push(gobiBearDaily(client))
-
   }
 
   await Promise.all(promises)

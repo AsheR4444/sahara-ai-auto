@@ -18,7 +18,7 @@ const saharaGetBalances = async () => {
   const walletsDataPromises = wallets.map(async (wallet): Promise<WalletInfo> => {
     try {
       const client = new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy)
-      const globalClient = new GlobalClient(wallet.name, client, wallet.refCode, wallet.proxy)
+      const globalClient = new GlobalClient({ name: wallet.name, evmClient: client, ref: wallet.refCode, proxy: wallet.proxy })
 
       const [balance, txCount, shardsAmount] = await Promise.all([
         client.wallet.balance(),

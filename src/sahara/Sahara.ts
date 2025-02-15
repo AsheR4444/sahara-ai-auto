@@ -3,20 +3,27 @@ import UserAgent from "user-agents"
 import uuid4 from "uuid4"
 
 import { Client , TokenAmount } from "@/eth-async"
-import { GlobalClient } from "@/GlobalClient"
-import { getProxyConfigAxios, logger, sleep } from "@/helpers"
+import { logger, sleep } from "@/helpers"
 
 import { solveHCaptcha } from "./captcha"
 import { SaharaDailyTasks, SaharaSocialTasks, SaharaTask } from "./tasks"
 import { ChallengeResponseTypes, ClaimTaskResponseTypes, ConfigTableResponseTypes, DataBatchResponseTypes, GetTokensFromFaucetErrorResponseTypes, GetTokensFromFaucetSuccessResponseTypes, SignInResponseTypes } from "./types"
 
+type SaharaConfig = {
+  name: string
+  evmClient: Client
+  proxy: AxiosProxyConfig | null
+  ref: string | null
+}
+
 class Sahara {
-  client: GlobalClient
+  name: string
   evmClient: Client
   userAgent: string
   headers: Required<AxiosRequestConfig>["headers"]
   token: string | null
   proxy: AxiosProxyConfig | null
+  ref: string | null
 
   private readonly API_URL = "https://legends.saharalabs.ai/api/v1"
   private readonly API_URL_CHALLENGE = this.API_URL + "/user/challenge"
@@ -29,15 +36,17 @@ class Sahara {
   private readonly API_URL_CONFIG_TABLE = `${this.API_URL}/system/configTable`
   private readonly API_URL_GET_INFO = `${this.API_URL}/user/info`
 
-  constructor(client: GlobalClient) {
+  constructor({ name, evmClient, proxy, ref }: SaharaConfig) {
     const userAgent = new UserAgent({
       deviceCategory: "desktop",
     }).toString()
-    this.proxy = client.proxy ? getProxyConfigAxios(client.proxy) : null
-    this.client = client
-    this.evmClient = client.evmClient
+    this.proxy = proxy
+
+    this.name = name
+    this.evmClient = evmClient
     this.userAgent = userAgent
     this.token = null
+    this.ref = ref
     this.headers = {
       "accept-language": "en-US,en;q=0.5",
       "authorization": "Bearer null",
@@ -67,14 +76,6 @@ class Sahara {
     )
     return response.data
   }
-
-  /*  private async getRequest<T>(url: string) {
-    const response = await axios.get<T>(url, {
-      headers: this.headers,
-    })
-
-    return response.data
-  } */
 
   private async getChallenge() {
     try {
@@ -158,7 +159,7 @@ class Sahara {
       const resp = await this.request<SignInResponseTypes>(this.API_URL_SIGNIN, {
         address: this.evmClient.signer.address.toLowerCase(),
         sig: signature,
-        referralCode: this.client.ref,
+        referralCode: this.ref,
         walletUUID: uuid4(),
         walletName: "Rabby Wallet",
       })
@@ -178,18 +179,19 @@ class Sahara {
       await this.signIn()
     }
 
-    logger.info(`Account ${this.client.name} | Start claiming task ${task.name}`)
+    logger.info(`Account ${this.name} | Start claiming task ${task.name}`)
 
+    await this.flushTask(task.taskID)
     const taskStatus = await this.flushTask(task.taskID)
 
     if (taskStatus === "1") {
-      logger.error(`Account ${this.client.name} | Task ${task.name} is not ready for claim`)
+      logger.error(`Account ${this.name} | Task ${task.name} is not ready for claim`)
 
       return false
     }
 
     if (taskStatus === "3") {
-      logger.success(`Account ${this.client.name} | Task ${task.name} is already claimed`)
+      logger.success(`Account ${this.name} | Task ${task.name} is already claimed`)
 
       return true
     }
@@ -200,7 +202,7 @@ class Sahara {
       })
 
       if (response[0].amount) {
-        logger.success(`Account ${this.client.name} | Task claimed: ${task.name}`)
+        logger.success(`Account ${this.name} | Task claimed: ${task.name}`)
 
         return response
       } else {
@@ -211,7 +213,7 @@ class Sahara {
 
     } catch (error) {
 
-      logger.error(`Account ${this.client.name} | Failed to claim task ${task.name}: ${error}`)
+      logger.error(`Account ${this.name} | Failed to claim task ${task.name}: ${error}`)
 
       return false
     }
@@ -245,7 +247,7 @@ class Sahara {
 
       return response.shardAmount
     } catch (error) {
-      logger.error(`Account ${this.client.name} | Error while getting shards amount ${error}`)
+      logger.error(`Account ${this.name} | Error while getting shards amount ${error}`)
 
       return false
     }
@@ -253,7 +255,7 @@ class Sahara {
 
   async sendTokens(amount: string | number) {
 
-    logger.info(`Account ${this.client.name} | Start sending tokens`)
+    logger.info(`Account ${this.name} | Start sending tokens`)
     try {
       const txParams = {
         to: this.evmClient.signer.address,
@@ -265,24 +267,24 @@ class Sahara {
       const receipt = await this.evmClient.transactions.waitTransaction(txResponse)
 
       if (receipt && receipt.status === 1) {
-        logger.success(`Account ${this.client.name} | Transaction successful! ${this.evmClient.network.explorer}tx/${receipt.hash}`)
+        logger.success(`Account ${this.name} | Transaction successful! ${this.evmClient.network.explorer}tx/${receipt.hash}`)
         return true
       } else {
-        logger.error(`Account ${this.client.name} | Error while sending tokens. Tx failed ${receipt?.hash}`)
+        logger.error(`Account ${this.name} | Error while sending tokens. Tx failed ${receipt?.hash}`)
         return false
       }
     } catch (error) {
-      logger.error(`Account ${this.client.name} | Error while sending tokens ${error}`)
+      logger.error(`Account ${this.name} | Error while sending tokens ${error}`)
       return false
     }
   }
 
   async getTokensFromFaucet() {
-    logger.info(`Account ${this.client.name} | Start getting tokens from faucet`)
+    logger.info(`Account ${this.name} | Start getting tokens from faucet`)
 
     const captchaResponse = await solveHCaptcha(
       {
-        accountName: this.client.name,
+        accountName: this.name,
         ua: this.userAgent,
         proxy: this.proxy,
       },
@@ -311,10 +313,10 @@ class Sahara {
         },
       )
 
-      logger.success(`Account ${this.client.name} | Claimed tokens from faucet: ${response.data.msg}`)
+      logger.success(`Account ${this.name} | Claimed tokens from faucet: ${response.data.msg}`)
     } catch (error) {
       const typedError = error as AxiosError<GetTokensFromFaucetErrorResponseTypes>
-      logger.error(`Account ${this.client.name} | Error while getting tokens from faucet ${error}`)
+      logger.error(`Account ${this.name} | Error while getting tokens from faucet ${error}`)
     }
 
   }
@@ -359,12 +361,12 @@ class Sahara {
     const unclaimedTasks = await this.getUnclaimedSortedTasks(SaharaDailyTasks.getAllTaskIds())
 
     if (!unclaimedTasks) {
-      logger.info(`Account ${this.client.name} | Not found any unclaimed daily tasks`)
+      logger.info(`Account ${this.name} | Not found any unclaimed daily tasks`)
 
       return []
     }
 
-    logger.info(`Account ${this.client.name} | Found ${unclaimedTasks.length} unclaimed daily tasks`)
+    logger.info(`Account ${this.name} | Found ${unclaimedTasks.length} unclaimed daily tasks`)
 
     return unclaimedTasks
   }
@@ -377,12 +379,12 @@ class Sahara {
     const unclaimedTasks = await this.getUnclaimedSortedTasks(SaharaSocialTasks.getAllTaskIds())
 
     if (!unclaimedTasks) {
-      logger.info(`Account ${this.client.name} | Not found any unclaimed social tasks`)
+      logger.info(`Account ${this.name} | Not found any unclaimed social tasks`)
 
       return []
     }
 
-    logger.info(`Account ${this.client.name} | Found ${unclaimedTasks.length} unclaimed social tasks`)
+    logger.info(`Account ${this.name} | Found ${unclaimedTasks.length} unclaimed social tasks`)
 
     return unclaimedTasks
   }

@@ -1,7 +1,9 @@
+import { THREADS } from "@/app"
 import { getWallets } from "@/db"
-import { Client, Networks } from "@/eth-async"
 import { GlobalClient } from "@/GlobalClient"
-import { checkProxy,getRandomNumber, logger, shuffleArray, sleep  } from "@/helpers"
+import { getRandomNumber, shuffleArray, sleep } from "@/helpers"
+import { runWithConcurrency } from "@/helpers/executor"
+import { processWallets } from "@/helpers/wallet-processor"
 import { SaharaDailyTasks } from "@/sahara"
 
 const galxeGobiBearDaily = async (client: GlobalClient) => {
@@ -22,28 +24,8 @@ const galxeGobiBearDaily = async (client: GlobalClient) => {
 
 const handleGalxeGobiBearDaily = async () => {
   const wallets = shuffleArray(await getWallets())
-
-  const promises: Promise<void>[] = []
-
-  for (const wallet of wallets) {
-    if (!wallet.proxy) {
-      logger.error(`Wallet ${wallet.name} has no proxy configured, skipping...`)
-      continue
-    }
-
-    const proxyCheck = await checkProxy(wallet.proxy)
-    if (!proxyCheck.isWorking) {
-      logger.error(`Proxy check failed for wallet ${wallet.name}: ${proxyCheck.error}`)
-      continue
-    }
-
-    const client = new GlobalClient(wallet.name, new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), wallet.refCode || "", wallet.proxy)
-
-    promises.push(galxeGobiBearDaily(client))
-
-  }
-
-  await Promise.all(promises)
+  const tasks = await processWallets(wallets, galxeGobiBearDaily)
+  await runWithConcurrency(tasks, THREADS)
 }
 
 const gobiBearDaily = async (client: GlobalClient) => {
@@ -54,28 +36,8 @@ const gobiBearDaily = async (client: GlobalClient) => {
 
 const handleGobiBearDaily = async () => {
   const wallets = shuffleArray(await getWallets())
-
-  const promises: Promise<void>[] = []
-
-  for (const wallet of wallets) {
-    if (!wallet.proxy) {
-      logger.error(`Wallet ${wallet.name} has no proxy configured, skipping...`)
-      continue
-    }
-
-    const proxyCheck = await checkProxy(wallet.proxy)
-    if (!proxyCheck.isWorking) {
-      logger.error(`Proxy check failed for wallet ${wallet.name}: ${proxyCheck.error}`)
-      continue
-    }
-
-    const client = new GlobalClient(wallet.name, new Client(wallet.privateKey, Networks.SaharaAI, wallet.proxy), wallet.refCode, wallet.proxy)
-
-    promises.push(gobiBearDaily(client))
-
-  }
-
-  await Promise.all(promises)
+  const tasks = await processWallets(wallets, gobiBearDaily)
+  await runWithConcurrency(tasks, THREADS)
 }
 
 export { galxeGobiBearDaily, gobiBearDaily, handleGalxeGobiBearDaily, handleGobiBearDaily }

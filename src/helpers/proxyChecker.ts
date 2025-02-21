@@ -24,7 +24,6 @@ const checkProxy = async (proxy: string): Promise<ProxyCheckResult> => {
     const response = await axios.get("http://ip-api.com/json", {
       httpsAgent: agent,
       httpAgent: agent,
-      timeout: 10000,
       validateStatus: (status) => status === 200,
     })
 

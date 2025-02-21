@@ -8,6 +8,8 @@ import { handleGalxeGobiBearDaily, handleGobiBearDaily, saharaGetBalances, sahar
 
 import "dotenv/config"
 
+export const THREADS = 10
+
 enum ActionEnum {
   IMPORT_CSV = "importCsv",
   //HANDLE_FAUCET = "handleFaucet",

@@ -57,10 +57,13 @@ class Sahara {
     }
   }
 
-  private async request<T>(url: string, data?: unknown) {
+  private async request<T>(url: string, data?: any) {
     const response = await axios.post<T>(
       url,
-      data,
+      {
+        timestamp: Date.now(),
+        ...data,
+      },
       {
         headers: this.headers,
       },

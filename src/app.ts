@@ -4,7 +4,7 @@ import prompts from "prompts"
 import { checkCaptchaKeys } from "@/config"
 import { createDatabase } from "@/db"
 import { createCsvTemplate, importWallets, logAuthor } from "@/helpers"
-import { handleGalxeGobiBearDaily, handleGobiBearDaily, saharaGetBalances, saharaOnchainTransactionSend  } from "@/tasks"
+import { handleGalxeGobiBearDaily, handleGobiBearDaily, saharaGetBalances, saharaOnchainClaim, saharaOnchainTransactionSend  } from "@/tasks"
 
 import "dotenv/config"
 
@@ -17,6 +17,7 @@ enum ActionEnum {
   GET_BALANCES = "getBalances",
   GALXE_GOBI_BEAR_DAILY = "galxeGobiBearDaily",
   GOBI_BEAR_DAILY = "gobiBearDaily",
+  CLAIM_TASK_ONCHAIN = "claimTaskOnchain",
 }
 
 type Choice = {
@@ -57,6 +58,9 @@ const handleAction = async (action: ActionEnum): Promise<void> => {
   case ActionEnum.GOBI_BEAR_DAILY:
     await handleGobiBearDaily()
     return
+  case ActionEnum.CLAIM_TASK_ONCHAIN:
+    await saharaOnchainClaim()
+    return
   }
 }
 
@@ -76,6 +80,7 @@ const main = async () => {
       { title: "Handle Gobi Bear Daily", value: ActionEnum.GOBI_BEAR_DAILY, description: "Gobi Bear daily tasks on Sahara website" },
       //{ title: "Handle Faucet", value: ActionEnum.HANDLE_FAUCET, description: "Get tokens from faucet" },
       { title: "Handle Onchain Transaction + claim task on website", value: ActionEnum.HANDLE_ONCHAIN_TRANSACTION, description: "Send tokens to wallets" },
+      { title: "Handle only claim task onchain without generating tx", value: ActionEnum.CLAIM_TASK_ONCHAIN },
     ] as Choice[],
   }) as prompts.Answers<"action"> & { action: ActionEnum }
 

@@ -21,10 +21,20 @@ const handleFaucetTx = async (client: GlobalClient) => {
   }
 }
 
+const handleOnlyClaimForTx = async (client: GlobalClient) => {
+  await client.sahara.claimTask(SaharaDailyTasks.GenerateTransactionTask)
+}
+
+const saharaOnchainClaim = async () => {
+  const wallets = shuffleArray(await getWallets())
+  const tasks = await processWallets(wallets, handleOnlyClaimForTx)
+  await runWithConcurrency(tasks, THREADS)
+}
+
 const saharaOnchainTransactionSend = async () => {
   const wallets = shuffleArray(await getWallets())
   const tasks = await processWallets(wallets, handleFaucetTx)
   await runWithConcurrency(tasks, THREADS)
 }
 
-export { saharaOnchainTransactionSend }
+export { saharaOnchainClaim,saharaOnchainTransactionSend }

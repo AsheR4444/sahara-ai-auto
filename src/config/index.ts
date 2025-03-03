@@ -16,6 +16,7 @@ interface Config {
     rucaptcha: string | number
   }
   ref_codes: string[]
+  retries?: number
 }
 
 const createDefaultConfig = () => {
@@ -25,7 +26,10 @@ const createDefaultConfig = () => {
 
 ref_codes: [
   ""
-]`
+]
+
+retries: 5
+`
 
   const configDir = path.dirname(CONFIG_PATH)
   if (!fs.existsSync(configDir)) {
@@ -55,6 +59,7 @@ const CONFIG = getConfig()
 const CAPTCHA_BESTSOLVER_KEY = String(CONFIG.captcha.bestsolver)
 const CAPTCHA_RUCAPTCHA_KEY = String(CONFIG.captcha.rucaptcha)
 const REF_CODES = CONFIG.ref_codes
+const RETRIES_AMOUNT = CONFIG.retries || 5
 
 const checkCaptchaKeys = (): boolean => {
   if (!CAPTCHA_BESTSOLVER_KEY || CAPTCHA_BESTSOLVER_KEY === "your bestsolver key") {
@@ -77,5 +82,6 @@ export {
   CSV_DATA_PATH,
   DB_PATH,
   REF_CODES,
+  RETRIES_AMOUNT,
   SRC_DIR,
 }

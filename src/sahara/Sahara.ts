@@ -5,10 +5,17 @@ import uuid4 from "uuid4"
 import { Client , TokenAmount } from "@/eth-async"
 import { GlobalClient } from "@/GlobalClient"
 import { getProxyConfigAxios, logger, sleep } from "@/helpers"
+import { retry } from "@/helpers/retry"
 
 import { solveHCaptcha } from "./captcha"
 import { SaharaDailyTasks, SaharaSocialTasks, SaharaTask } from "./tasks"
-import { ChallengeResponseTypes, ClaimTaskResponseTypes, ConfigTableResponseTypes, DataBatchResponseTypes, GetTokensFromFaucetErrorResponseTypes, GetTokensFromFaucetSuccessResponseTypes, SignInResponseTypes } from "./types"
+import { ChallengeResponseTypes,
+  ClaimTaskResponseTypes,
+  ConfigTableResponseTypes,
+  DataBatchResponseTypes,
+  GetTokensFromFaucetErrorResponseTypes,
+  GetTokensFromFaucetSuccessResponseTypes,
+  SignInResponseTypes } from "./types"
 
 class Sahara {
   client: GlobalClient
@@ -17,6 +24,7 @@ class Sahara {
   headers: Required<AxiosRequestConfig>["headers"]
   token: string | null
   proxy: AxiosProxyConfig | null
+  name: string
 
   private readonly API_URL = "https://legends.saharalabs.ai/api/v1"
   private readonly API_URL_CHALLENGE = this.API_URL + "/user/challenge"
@@ -33,6 +41,7 @@ class Sahara {
     const userAgent = new UserAgent({
       deviceCategory: "desktop",
     }).toString()
+    this.name = client.name
     this.proxy = client.proxy ? getProxyConfigAxios(client.proxy) : null
     this.client = client
     this.evmClient = client.evmClient
@@ -57,7 +66,7 @@ class Sahara {
     }
   }
 
-  private async request<T>(url: string, data?: any) {
+  private async request<T>(url: string, data?: object) {
     const response = await axios.post<T>(
       url,
       {
@@ -71,14 +80,6 @@ class Sahara {
     return response.data
   }
 
-  /*  private async getRequest<T>(url: string) {
-    const response = await axios.get<T>(url, {
-      headers: this.headers,
-    })
-
-    return response.data
-  } */
-
   private async getChallenge() {
     try {
       const response = await this.request<ChallengeResponseTypes>(this.API_URL_CHALLENGE, {
@@ -86,9 +87,20 @@ class Sahara {
       })
 
       return response.challenge
-    } catch (e) {
-      console.log(e)
+    } catch {
+      return false
+    }
+  }
 
+  private async batchTask(taskID: string) {
+    try {
+      const batchResponse = await this.request<DataBatchResponseTypes>(this.API_URL_BATCH_TASK, {
+        taskIDs: [taskID],
+      })
+
+      return batchResponse[taskID].status
+
+    } catch {
       return false
     }
   }
@@ -99,24 +111,19 @@ class Sahara {
         taskID,
       })
 
-    } catch (error) {
-      logger.error(error)
+    } catch  {
+      return false
     }
 
     await sleep(1)
 
-    try {
-      const batchResponse = await this.request<DataBatchResponseTypes>(this.API_URL_BATCH_TASK, {
-        taskIDs: [taskID],
-      })
+    const batchStatus = await this.batchTask(taskID)
 
-      return batchResponse[taskID].status
-
-    } catch (error) {
-      logger.error(error)
-
-      return false
+    if (batchStatus) {
+      return batchStatus
     }
+
+    return false
   }
 
   private async getConfigTable() {
@@ -128,8 +135,7 @@ class Sahara {
       const response = await this.request<ConfigTableResponseTypes>(this.API_URL_CONFIG_TABLE)
 
       return response
-    } catch (e) {
-      console.log(e)
+    } catch {
 
       return false
     }
@@ -167,15 +173,13 @@ class Sahara {
       })
 
       this.setAuthToken(resp.accessToken)
-
-      //logger.success(`Account ${this.client.name} | Signed in to Sahara`)
-
       return true
-    } catch (error) {
+    } catch {
       return false
     }
   }
 
+  @retry("claim task")
   async claimTask(task: SaharaTask) {
     if (!this.token) {
       await this.signIn()
@@ -186,6 +190,8 @@ class Sahara {
     await this.flushTask(task.taskID)
     await sleep(1)
     const taskStatus = await this.flushTask(task.taskID)
+
+    if (!taskStatus) return false
 
     if (taskStatus === "1") {
       logger.error(`Account ${this.client.name} | Task ${task.name} is not ready for claim`)
@@ -199,35 +205,19 @@ class Sahara {
       return true
     }
 
-    let counter = 0
+    const response = await this.request<ClaimTaskResponseTypes>(this.API_URL_CLAIM_TASK, {
+      "taskID": task.taskID,
+    })
 
-    while (counter !== 3) {
-      try {
-        const response = await this.request<ClaimTaskResponseTypes>(this.API_URL_CLAIM_TASK, {
-          "taskID": task.taskID,
-        })
+    if (response[0].amount) {
+      logger.success(`Account ${this.client.name} | Task claimed: ${task.name}`)
 
-        if (response[0].amount) {
-          logger.success(`Account ${this.client.name} | Task claimed: ${task.name}`)
-
-          return response
-        }
-
-      } catch (error) {
-        //logger.error(`Account ${this.client.name} | Failed to claim task ${task.name}: ${error}`)
-
-      }
-
-      counter++
-
-      if (counter === 2) {
-        logger.error(`Account ${this.client.name} | Failed to claim task ${task.name}`)
-      }
+      return response
     }
-
   }
 
-  async getShardsAmount() {
+  @retry("get shards amount", true)
+  private async getInfo() {
     if (!this.token) {
       await this.signIn()
     }
@@ -243,22 +233,31 @@ class Sahara {
         walletName: string,
         shardAmount: string,
         mapStates: [
-            {
-                id: string,
-                progress: string,
-                mintable: boolean,
-                claimable: boolean
-            },
+        {
+          id: string,
+          progress: string,
+          mintable: boolean,
+          claimable: boolean
+        },
         ],
       taskStateMap: null
     }>(this.API_URL_GET_INFO)
-
       return response.shardAmount
-    } catch (error) {
-      logger.error(`Account ${this.client.name} | Error while getting shards amount ${error}`)
-
+    } catch {
       return false
     }
+  }
+
+  async getShardsAmount() {
+    if (!this.token) {
+      await this.signIn()
+    }
+
+    const info = await this.getInfo()
+
+    if (!info) return false
+
+    return info
   }
 
   async sendTokens(amount: string | number) {
@@ -355,7 +354,7 @@ class Sahara {
 
     const unclaimedTasks = Object.entries(response)
       .filter(([key]) => taskIds.includes(key))
-      .filter(([key, value]) => value.status === "2")
+      .filter(([, value]) => value.status === "2")
       .map(([key]) => key)
 
     return unclaimedTasks

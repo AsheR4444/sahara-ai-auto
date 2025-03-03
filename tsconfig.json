@@ -15,7 +15,9 @@
       "@/galxe/*": ["src/galxe/*"],
       "@/helpers/*": ["src/helpers/*"],
       "@/types/*": ["src/types/*"]
-    }
+    },
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

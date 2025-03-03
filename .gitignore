@@ -3,3 +3,4 @@ files
 .env
 test.ts
 logs
+dist
